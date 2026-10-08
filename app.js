@@ -804,7 +804,7 @@ function renderStudentsShell(){
     <div class="panel">
       <div class="panel-head">
         <div class="toolbar">
-          <div class="search-input">${ICONS.search}<input type="text" id="studentSearch" placeholder="Search by name or admission no." value="${esc(studentFilter.q)}" style="width:240px"></div>
+          <div class="search-input">${ICONS.search}<input type="text" id="studentSearch" placeholder="&nbsp;Search by name or admission no." value="${esc(studentFilter.q)}" style="width:240px"></div>
           <select id="filterClass" style="width:140px"><option value="">All classes</option>${classes.map(c=>`<option ${studentFilter.class===c?'selected':''} value="${esc(c)}">Class ${esc(c)}</option>`).join('')}</select>
         </div>
         <button class="btn" id="btnPrintStudents">${ICONS.print}Print</button>

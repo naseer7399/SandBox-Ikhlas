@@ -804,7 +804,7 @@ function renderStudentsShell(){
     <div class="panel">
       <div class="panel-head">
         <div class="toolbar">
-          <div class="search-input">${ICONS.search}<input type="text" id="studentSearch" placeholder="&nbsp;Search by name or admission no." value="${esc(studentFilter.q)}" style="width:240px"></div>
+          <div class="search-input">${ICONS.search}<input type="text" id="studentSearch" placeholder="&ensp;Search by Name or Admission no." value="${esc(studentFilter.q)}" style="width:300px"></div>
           <select id="filterClass" style="width:140px"><option value="">All classes</option>${classes.map(c=>`<option ${studentFilter.class===c?'selected':''} value="${esc(c)}">Class ${esc(c)}</option>`).join('')}</select>
         </div>
         <button class="btn" id="btnPrintStudents">${ICONS.print}Print</button>
@@ -1103,7 +1103,7 @@ function renderFeesShell(){
     <div class="panel">
       <div class="panel-head">
         <div class="toolbar">
-          <div class="search-input">${ICONS.search}<input type="text" id="feeSearch" placeholder="Search by student name or admission no." value="${esc(feeFilter.q)}" style="width:260px"></div>
+          <div class="search-input">${ICONS.search}<input type="text" id="feeSearch" placeholder="&ensp;Search by student Name or Admission no." value="${esc(feeFilter.q)}" style="width:300px"></div>
           <select id="feeStatusFilter" style="width:150px"><option value="">All statuses</option><option ${feeFilter.status==='Paid'?'selected':''}>Paid</option><option ${feeFilter.status==='Partial'?'selected':''}>Partial</option><option ${feeFilter.status==='Pending'?'selected':''}>Pending</option></select>
         </div>
         <button class="btn" id="btnPrintFees">${ICONS.print}Print</button>
@@ -1380,7 +1380,7 @@ function renderPaymentsShell(){
   setContent(`
     <div class="panel">
       <div class="panel-head">
-        <div class="search-input">${ICONS.search}<input type="text" id="paySearch" placeholder="Search by student or receipt no." value="${esc(paymentFilter.q)}" style="width:260px"></div>
+        <div class="search-input">${ICONS.search}<input type="text" id="paySearch" placeholder="&ensp;Search by student or receipt no." value="${esc(paymentFilter.q)}" style="width:280px"></div>
         <button class="btn" id="btnPrintPayments">${ICONS.print}Print</button>
         <button class="btn btn-primary" id="btnAddPayment">${ICONS.plus}Record payment</button>
       </div>

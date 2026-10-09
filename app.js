@@ -462,7 +462,7 @@ function paymentMessageText(payment, fee, student, calc){
     `We have received a fee payment for ${student ? student.name : ''} (Admission No. ${payment.studentId}).`,
     ``,
     `Fee type: ${fee ? fee.type : '\u2014'}`,
-    `Total fee: ${money(calc.net)}`,
+  //  `Total fee: ${money(calc.net)}`,
     `Amount paid: ${money(payment.amount)}`,
     `Balance due: ${money(calc.balance)}`,
     `Receipt No: ${payment.receipt}`,

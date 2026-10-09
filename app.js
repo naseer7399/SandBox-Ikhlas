@@ -484,6 +484,18 @@ function formatAadhar(v){
   return digits.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
 }
 
+// Teachers only see the last 4 digits of Aadhaar numbers (e.g. XXXX XXXX 0103).
+// Management still sees the full number.
+function maskAadhar(v){
+  const digits = String(v || '').replace(/\s/g, '');
+  if(!digits) return '';
+  const last4 = digits.slice(-4);
+  return 'XXXX XXXX ' + last4;
+}
+function displayAadhar(v){
+  return SESSION.role === 'teacher' ? maskAadhar(v) : (v || '');
+}
+
 function tagForStatus(status){
   const cls = status === 'Paid' ? 'tag-paid' : status === 'Partial' ? 'tag-partial' : 'tag-pending';
   return `<span class="tag ${cls}">${status}</span>`;
@@ -647,7 +659,7 @@ function renderShell(){
     <div class="role-pill"><span class="dot"></span>${ROLE_LABELS[SESSION.role] || 'Guest'} access</div>
     ${cloudDocRef ? `<div class="role-pill" style="background:rgba(255,255,255,0.06);"><span class="dot" style="background:#2F8F5B;"></span>Cloud sync on</div>` : ''}
     <button class="nav-item" id="btnLogout">${ICONS.logout}<span>Log out</span></button>
-    <div class="app-copyright">\u00a9 2026 Naseer ISM-V1.5® All rights reserved.</div>`;
+    <div class="app-copyright">\u00a9 2026 Naseer ISM WEB All rights reserved.</div>`;
   document.querySelectorAll('.nav-item[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => navigate(btn.dataset.tab));
   });
@@ -844,11 +856,11 @@ function renderStudentsTable(){
           <td>${esc(s.name)}</td>
           <td>${esc(s.class)}${s.section ? ('-' + esc(s.section)) : ''}</td>
           <td>${fmtDate(s.dob)}</td>
-          <td>${esc(s.studentAadhar)||'\u2014'}</td>
+          <td>${esc(displayAadhar(s.studentAadhar))||'\u2014'}</td>
           <td>${esc(s.fatherName)}</td>
-          <td>${esc(s.fatherAadhar)||'\u2014'}</td>
+          <td>${esc(displayAadhar(s.fatherAadhar))||'\u2014'}</td>
           <td>${esc(s.motherName)||'\u2014'}</td>
-          <td>${esc(s.motherAadhar)||'\u2014'}</td>
+          <td>${esc(displayAadhar(s.motherAadhar))||'\u2014'}</td>
           <td>${esc(s.phone)}</td>
           <td><div class="row-actions">
             <button class="btn btn-sm btn-ghost" data-view="${s.id}" title="View profile">${ICONS.eye}</button>
@@ -1036,13 +1048,13 @@ function renderStudentProfile(){
         </div>
         <div class="info-grid">
           <div class="item"><div class="k">Admission No.</div><div class="v">${esc(s.id)}</div></div>
-          <div class="item"><div class="k">Student's Aadhaar</div><div class="v">${esc(s.studentAadhar)||'\u2014'}</div></div>
+          <div class="item"><div class="k">Student's Aadhaar</div><div class="v">${esc(displayAadhar(s.studentAadhar))||'\u2014'}</div></div>
           <div class="item"><div class="k">Phone</div><div class="v">${esc(s.phone)||'\u2014'}</div></div>
           <div class="item"><div class="k">Class &amp; Section</div><div class="v">${s.class ? (esc(s.class) + (s.section ? '-' + esc(s.section) : '')) : '\u2014'}</div></div>
           <div class="item"><div class="k">Father's name</div><div class="v">${esc(s.fatherName)||'\u2014'}</div></div>
-          <div class="item"><div class="k">Father's Aadhaar</div><div class="v">${esc(s.fatherAadhar)||'\u2014'}</div></div>
+          <div class="item"><div class="k">Father's Aadhaar</div><div class="v">${esc(displayAadhar(s.fatherAadhar))||'\u2014'}</div></div>
           <div class="item"><div class="k">Mother's name</div><div class="v">${esc(s.motherName)||'\u2014'}</div></div>
-          <div class="item"><div class="k">Mother's Aadhaar</div><div class="v">${esc(s.motherAadhar)||'\u2014'}</div></div>
+          <div class="item"><div class="k">Mother's Aadhaar</div><div class="v">${esc(displayAadhar(s.motherAadhar))||'\u2014'}</div></div>
           <div class="item" style="grid-column: 1 / -1;"><div class="k">Address</div><div class="v">${esc(s.address)||'\u2014'}</div></div>
         </div>
       </div>
@@ -1677,6 +1689,7 @@ function printReceipt(paymentId){
       <tr><td class="k">Date</td><td class="v">${fmtDate(p.date)}</td></tr>
       <tr><td class="k">Student</td><td class="v">${esc(s ? s.name : studentName(p.studentId))}</td></tr>
       <tr><td class="k">Admission No.</td><td class="v">${esc(p.studentId)}</td></tr>
+      <tr><td class="k">Class</td><td class="v">${studentClassLabel(p.studentId)}</td></tr>
       <tr><td class="k">Fee type</td><td class="v">${esc(f ? f.type : '\u2014')}</td></tr>
       <tr><td class="k">Payment method</td><td class="v">${esc(p.method)}</td></tr>
     </table>

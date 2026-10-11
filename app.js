@@ -3537,7 +3537,7 @@ function firebaseUsagePanelHTML(){
         </details>
         <div class="toolbar" style="margin-top:14px;">
           <button class="btn" id="btnFbuPreview">Preview warning</button>
-      //    <button class="btn btn-danger" id="btnFbuReset">Reset today\u2019s counters</button>    
+          <button class="btn btn-danger" id="btnFbuReset">Reset today\u2019s counters</button>    
         </div>
       </div>
     </div>`;

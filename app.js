@@ -3518,7 +3518,7 @@ function firebaseUsagePanelHTML(){
       <div class="panel-body">
         ${cloudDocRef ? '' : '<p class="small-note" style="margin-bottom:12px;">Cloud sync is off, so nothing is being counted.</p>'}
         <div id="fbuMeters">${FBU_METRICS.map(fbuMeterRow).join('')}</div>
-        <p class="small-note" style="margin:12px 0;">Counted by this app on this device and reset at midnight Pacific Time (when Firebase resets between 12PM-2PM in India time). Other devices and the Parent Portal also use the same quota, so match the numbers to the Firebase console from time to time.</p>
+        <p class="small-note" style="margin:12px 0;">This limits will reset at midnight Pacific Time (when Firebase resets between <b>12PM-2PM</b> in India time). Other devices and the Parent Portal also use the same quota, so match the numbers to the Firebase console from time to time.</p>
         <details class="fbu-details">
           <summary>Match Firebase console</summary>
           <p class="field-help" style="margin:8px 0;">Open Firebase console \u2192 Firestore Database \u2192 Usage and type today\u2019s numbers. Leave a box empty to keep the current count.</p>

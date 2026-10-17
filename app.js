@@ -3308,6 +3308,14 @@ function openModal({ title, body, confirmLabel, onConfirm, danger, extraButtons 
    Use "Match Firebase console" in Settings to correct the numbers
    (e.g. to include other devices or the Parent Portal app).
    When any meter reaches 90% a closable warning pop-up appears.
+
+   SHARED METER: every device adds its own counts to ONE Firestore
+   document (usage_meter/<Pacific date>) using atomic increments, so
+   the Settings graph shows the total of ALL staff devices instead of
+   just this browser. Counts are batched (one small write per minute at
+   most) and the meter's own reads/writes are included in the totals.
+   Reads made by the separate Parent Portal app cannot be seen from
+   here, so use "Match Firebase console" now and then to re-sync.
    --------------------------------------------------------------- */
 const FBU_KEY = 'ikhlas_fb_usage_v1';
 const FBU_DEFAULT_LIMITS = { reads: 50000, writes: 20000, deletes: 20000 };
@@ -3319,6 +3327,18 @@ const FBU_METRICS = [
 let FBU = null;
 let fbuTimer = null;
 let fbuInstalled = false;
+let fbuSilent = false;        // true while the meter itself talks to Firestore (so it is not double counted)
+let fbuFlushTimer = null;
+let fbuSelfReads = 0;         // meter's own reads, folded into the next flush
+let fbuLastPull = 0;
+let fbuPulling = false;
+const FBU_FLUSH_MS = 60 * 1000;
+const FBU_RETRY_MS = 5 * 60 * 1000;
+function fbuMeterRef(){
+  if(typeof firebase === 'undefined' || !cloudDocRef) return null;
+  return firebase.firestore().collection('usage_meter').doc(fbuToday());
+}
+function fbuZero(){ return { reads: 0, writes: 0, deletes: 0 }; }
 
 function fbuToday(){
   try{
@@ -3332,25 +3352,103 @@ function fbuLoad(){
   FBU = Object.assign({ day: fbuToday(), reads: 0, writes: 0, deletes: 0, alerted: {}, calibratedAt: 0 }, saved || {});
   FBU.limits = Object.assign({}, FBU_DEFAULT_LIMITS, FBU.limits || {});
   FBU.alerted = FBU.alerted || {};
+  FBU.pending = Object.assign(fbuZero(), FBU.pending || {});   // counted here, not yet added to the shared total
+  FBU.shared = FBU.shared || null;                             // last shared totals read from Firestore
+  FBU.syncError = '';
   fbuRollover();
   return FBU;
 }
-function fbuSave(){ try{ localStorage.setItem(FBU_KEY, JSON.stringify(FBU)); }catch(e){} }
+function fbuSave(){ try{ const { syncError, ...keep } = FBU; localStorage.setItem(FBU_KEY, JSON.stringify(keep)); }catch(e){} }
 function fbuRollover(){
   const t = fbuToday();
-  if(FBU.day !== t){ FBU.day = t; FBU.reads = 0; FBU.writes = 0; FBU.deletes = 0; FBU.alerted = {}; FBU.calibratedAt = 0; fbuSave(); }
+  if(FBU.day !== t){ FBU.day = t; FBU.reads = 0; FBU.writes = 0; FBU.deletes = 0; FBU.alerted = {}; FBU.calibratedAt = 0; FBU.pending = fbuZero(); FBU.shared = null; fbuSelfReads = 0; fbuLastPull = 0; fbuSave(); }
 }
 function fbuAdd(metric, n){
   if(!n) return;
   fbuLoad(); fbuRollover();
   FBU[metric] += n;
+  FBU.pending[metric] = (FBU.pending[metric] || 0) + n;
+  fbuScheduleFlush(FBU_FLUSH_MS);
   if(fbuTimer) return;
   fbuTimer = setTimeout(() => { fbuTimer = null; fbuSave(); fbuCheckAlerts(); fbuRefreshPanel(); }, 800);
+}
+// What the graph shows: the shared all-devices total (plus anything not yet
+// uploaded) when it is known, otherwise just this device's own count.
+function fbuValue(id){
+  fbuLoad();
+  if(FBU.shared) return (FBU.shared[id] || 0) + (FBU.pending[id] || 0);
+  return FBU[id];
 }
 function fbuPct(id){
   fbuLoad();
   const limit = FBU.limits[id] || 1;
-  return (FBU[id] / limit) * 100;
+  return (fbuValue(id) / limit) * 100;
+}
+
+/* --- Shared meter: upload this device's counts, download the total --- */
+function fbuScheduleFlush(ms){
+  if(fbuFlushTimer || !cloudDocRef) return;
+  fbuFlushTimer = setTimeout(() => { fbuFlushTimer = null; fbuFlush(); }, ms);
+}
+function fbuFlush(){
+  fbuLoad(); fbuRollover();
+  const ref = fbuMeterRef();
+  if(!ref) return Promise.resolve();
+  const p = FBU.pending;
+  if(!p.reads && !p.writes && !p.deletes && !fbuSelfReads) return Promise.resolve();
+  const delta = { reads: p.reads + fbuSelfReads, writes: p.writes + 1, deletes: p.deletes };  // +1 = this upload itself
+  const sent = { reads: p.reads, writes: p.writes, deletes: p.deletes, self: fbuSelfReads };
+  FBU.pending = fbuZero(); fbuSelfReads = 0; fbuSave();
+  const inc = (n) => firebase.firestore.FieldValue.increment(n);
+  fbuSilent = true;
+  let r;
+  try{
+    r = ref.set({ reads: inc(delta.reads), writes: inc(delta.writes), deletes: inc(delta.deletes), updatedAt: Date.now() }, { merge: true });
+  }finally{ fbuSilent = false; }
+  return r.then(() => {
+    FBU.syncError = '';
+    if(FBU.shared){ FBU.shared.reads += delta.reads; FBU.shared.writes += delta.writes; FBU.shared.deletes += delta.deletes; }
+    fbuSave(); fbuCheckAlerts(); fbuRefreshPanel();
+  }).catch(err => {
+    // Put the counts back and try again later (e.g. offline, quota used up, or the rule is missing).
+    FBU.pending.reads += sent.reads; FBU.pending.writes += sent.writes; FBU.pending.deletes += sent.deletes;
+    fbuSelfReads += sent.self;
+    FBU.syncError = (err && err.code) || 'error';
+    fbuSave(); fbuRefreshPanel();
+    fbuScheduleFlush(FBU_RETRY_MS);
+  });
+}
+function fbuPull(){
+  const ref = fbuMeterRef();
+  if(!ref || fbuPulling) return Promise.resolve();
+  fbuPulling = true; fbuLastPull = Date.now();
+  fbuSilent = true;
+  let r;
+  try{ r = ref.get(); }finally{ fbuSilent = false; }
+  return r.then(snap => {
+    fbuSelfReads += 1;
+    const d = snap.exists ? snap.data() : {};
+    // Keep our own not-yet-uploaded counts on top of whatever the shared total says.
+    FBU.shared = { reads: d.reads || 0, writes: d.writes || 0, deletes: d.deletes || 0 };
+    FBU.syncError = '';
+    fbuSave(); fbuCheckAlerts(); fbuRefreshPanel();
+  }).catch(err => {
+    FBU.syncError = (err && err.code) || 'error';
+    fbuRefreshPanel();
+  }).then(() => { fbuPulling = false; });
+}
+function fbuSetShared(values){
+  // values: { reads?, writes?, deletes? } — overwrite the shared totals (used by "Match console" and "Reset").
+  const ref = fbuMeterRef();
+  fbuLoad();
+  FBU.shared = Object.assign({ reads: 0, writes: 0, deletes: 0 }, FBU.shared || {}, values);
+  Object.keys(values).forEach(k => { FBU.pending[k] = 0; });
+  fbuSave();
+  if(!ref) return Promise.resolve();
+  fbuSilent = true;
+  let r;
+  try{ r = ref.set(Object.assign({}, values, { updatedAt: Date.now() }), { merge: true }); }finally{ fbuSilent = false; }
+  return r.then(() => { FBU.syncError = ''; }).catch(err => { FBU.syncError = (err && err.code) || 'error'; });
 }
 function fbuLevel(pct){ return pct >= 100 ? 100 : pct >= 90 ? 90 : 0; }
 
@@ -3372,8 +3470,9 @@ function fbuPatch(owner, name, factory){
 }
 function fbuCountPromise(orig, metric, countFn){
   return function(...a){
+    const silent = fbuSilent;
     const r = orig.apply(this, a);
-    if(r && typeof r.then === 'function') r.then(res => fbuAdd(metric, countFn ? countFn(res) : 1), () => {});
+    if(!silent && r && typeof r.then === 'function') r.then(res => fbuAdd(metric, countFn ? countFn(res) : 1), () => {});
     return r;
   };
 }
@@ -3435,7 +3534,16 @@ function fbuInstall(){
       };
     });
     fbuInstalled = true;
-    setInterval(() => { fbuLoad(); fbuRollover(); fbuCheckAlerts(); fbuRefreshPanel(); }, 5000);
+    setInterval(() => {
+      fbuLoad(); fbuRollover(); fbuCheckAlerts(); fbuRefreshPanel();
+      if(!cloudDocRef) return;
+      fbuScheduleFlush(FBU_FLUSH_MS);
+      const isMgmt = typeof SESSION !== 'undefined' && SESSION && SESSION.role === 'management';
+      const gap = document.getElementById('fbuMeters') ? 60000 : 5 * 60000;   // refresh faster while Settings is open
+      if(isMgmt && !document.hidden && Date.now() - fbuLastPull > gap) fbuPull();
+    }, 5000);
+    window.addEventListener('pagehide', () => { try{ fbuFlush(); }catch(e){} });
+    document.addEventListener('visibilitychange', () => { if(document.hidden){ try{ fbuFlush(); }catch(e){} } });
   }catch(e){ console.error('Could not start Firebase usage tracking', e); }
 }
 
@@ -3459,7 +3567,7 @@ function fbuMeterRow(m){
     <div class="fbu-row">
       <div class="fbu-row-top">
         <strong>${m.label}</strong>
-        <span class="fbu-count">${FBU[m.id].toLocaleString()} / ${FBU.limits[m.id].toLocaleString()} <em class="fbu-pct ${fbuBarClass(pct)}">${pct.toFixed(1)}%</em></span>
+        <span class="fbu-count">${fbuValue(m.id).toLocaleString()} / ${FBU.limits[m.id].toLocaleString()} <em class="fbu-pct ${fbuBarClass(pct)}">${pct.toFixed(1)}%</em></span>
       </div>
       <div class="fbu-bar"><div class="fbu-fill ${fbuBarClass(pct)}" style="width:${Math.min(100, pct)}%"></div></div>
     </div>`;
@@ -3487,7 +3595,7 @@ function fbuShowAlert(preview){
             ? 'A free-plan daily limit has been reached. Saving or loading shared data may stop working until the quota resets (midnight Pacific Time).'
             : 'Today\u2019s Firebase usage has reached 90% of the free daily limit. Reduce activity or upgrade the Firebase plan to avoid interruptions.'}</div>`}
           ${list.map(fbuMeterRow).join('')}
-          <p class="small-note" style="margin-top:12px;">Counted from this device. Check the Firebase console Usage tab for the exact totals across all devices and the Parent Portal.</p>
+          <p class="small-note" style="margin-top:12px;">${fbuScopeNote()} Parent Portal reads are not included \u2014 check the Firebase console Usage tab for the exact totals.</p>
         </div>
         <div class="modal-foot">
           <button class="btn" id="fbuAlertSettings">Open Settings</button>
@@ -3509,6 +3617,26 @@ function fbuRefreshPanel(){
   if(!el) return;
   fbuLoad(); fbuRollover();
   el.innerHTML = FBU_METRICS.map(fbuMeterRow).join('');
+  const st = document.getElementById('fbuStatus');
+  if(st) st.innerHTML = fbuStatusHTML();
+}
+function fbuScopeNote(){
+  return FBU.shared ? 'Total of all staff devices using this app.' : 'Counted from this device only (shared total unavailable).';
+}
+function fbuStatusHTML(){
+  fbuLoad();
+  const pend = FBU.pending.reads + FBU.pending.writes + FBU.pending.deletes;
+  if(!cloudDocRef) return '';
+  if(FBU.syncError === 'permission-denied'){
+    return `<p class="small-note" style="margin-bottom:12px;color:#B3412F;"><b>Showing this device only.</b> Add the <code>usage_meter</code> rule from firebase-config.js to Firestore \u2192 Rules and publish it, then the graph will include every device.</p>`;
+  }
+  if(FBU.syncError){
+    return `<p class="small-note" style="margin-bottom:12px;color:#B3412F;"><b>Could not reach the shared meter</b> (${FBU.syncError}). It will retry automatically${pend ? `; ${pend.toLocaleString()} counts are waiting to upload` : ''}.</p>`;
+  }
+  if(!FBU.shared){
+    return `<p class="small-note" style="margin-bottom:12px;">Loading the shared total\u2026</p>`;
+  }
+  return `<p class="small-note" style="margin-bottom:12px;">Shared across all staff devices${pend ? ` \u00B7 ${pend.toLocaleString()} recent counts uploading` : ''}. This device alone: ${FBU.writes.toLocaleString()} writes, ${FBU.reads.toLocaleString()} reads, ${FBU.deletes.toLocaleString()} deletes.</p>`;
 }
 function firebaseUsagePanelHTML(){
   fbuLoad(); fbuRollover();
@@ -3517,13 +3645,14 @@ function firebaseUsagePanelHTML(){
       <div class="panel-head"><h3>Firebase usage</h3><div class="sub">Today\u2019s Writes, Reads and Deletes against the free daily limits \u2014 a warning pops up at 90%</div></div>
       <div class="panel-body">
         ${cloudDocRef ? '' : '<p class="small-note" style="margin-bottom:12px;">Cloud sync is off, so nothing is being counted.</p>'}
+        <div id="fbuStatus">${fbuStatusHTML()}</div>
         <div id="fbuMeters">${FBU_METRICS.map(fbuMeterRow).join('')}</div>
-        <p class="small-note" style="margin:12px 0;">This daily limits will reset at midnight Pacific Time (it is between <b>12PM-2PM</b> in India time). Other devices and the Parent Portal also use the same quota, so match the numbers to the Firebase console from time to time.</p>
+        <p class="small-note" style="margin:12px 0;">This daily limits will reset at midnight Pacific Time (it is between <b>12PM-2PM</b> in India time). The Parent Portal app also uses the same quota but can\u2019t be counted here, so match the numbers to the Firebase console from time to time.</p>
         <details class="fbu-details">
           <summary>Match Firebase console</summary>
           <p class="field-help" style="margin:8px 0;">Open Firebase console \u2192 Firestore Database \u2192 Usage and type today\u2019s numbers. Leave a box empty to keep the current count.</p>
           <div class="field-row">
-            ${FBU_METRICS.map(m => `<div class="field"><label>${m.label}</label><input type="number" min="0" id="fbuSet_${m.id}" placeholder="${FBU[m.id]}"></div>`).join('')}
+            ${FBU_METRICS.map(m => `<div class="field"><label>${m.label}</label><input type="number" min="0" id="fbuSet_${m.id}" placeholder="${fbuValue(m.id)}"></div>`).join('')}
           </div>
           <button class="btn btn-primary" id="btnFbuMatch">Update counters</button>
         </details>
@@ -3545,14 +3674,16 @@ function firebaseUsagePanelHTML(){
 function wireFirebaseUsagePanel(){
   const byId = (id) => document.getElementById(id);
   if(!byId('fbuPanel')) return;
+  fbuPull();   // fetch the latest all-devices total whenever Settings opens
   byId('btnFbuMatch').addEventListener('click', () => {
+    const vals = {};
     FBU_METRICS.forEach(m => {
       const v = byId('fbuSet_' + m.id).value;
-      if(v !== '' && Number(v) >= 0) FBU[m.id] = Math.floor(Number(v));
+      if(v !== '' && Number(v) >= 0){ vals[m.id] = Math.floor(Number(v)); FBU[m.id] = vals[m.id]; }
     });
     FBU.alerted = {}; FBU.calibratedAt = Date.now();
-    fbuSave(); renderSettings(); fbuCheckAlerts();
-    toast('Usage counters updated.');
+    fbuSetShared(vals).then(() => { fbuSave(); renderSettings(); fbuCheckAlerts(); });
+    toast('Usage counters updated for all devices.');
   });
   byId('btnFbuLimits').addEventListener('click', () => {
     FBU_METRICS.forEach(m => {
@@ -3566,7 +3697,7 @@ function wireFirebaseUsagePanel(){
   byId('btnFbuPreview').addEventListener('click', () => fbuShowAlert(true));
   byId('btnFbuReset').addEventListener('click', () => {
     FBU.reads = 0; FBU.writes = 0; FBU.deletes = 0; FBU.alerted = {};
-    fbuSave(); renderSettings();
-    toast('Counters reset.');
+    fbuSetShared({ reads: 0, writes: 0, deletes: 0 }).then(() => { fbuSave(); renderSettings(); });
+    toast('Counters reset for all devices.');
   });
 }

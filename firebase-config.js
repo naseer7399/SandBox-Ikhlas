@@ -63,6 +63,12 @@
               allow read: if true;
               allow write: if request.auth != null;
             }
+            // Shared Firebase-usage meter (Settings > Firebase usage). Every
+            // signed-in device adds its read/write/delete counts here so the
+            // graph shows the total for ALL devices. Not sensitive.
+            match /usage_meter/{docId} {
+              allow read, write: if request.auth != null;
+            }
             // Fee reminders and announcements sent from Notifications.
             // Publicly readable (this is broadcast content by design —
             // parents aren't signed in), writable only by staff.

@@ -151,12 +151,12 @@ function seedData(){
       { id:'106', name:'Meera Iyer',   dob:'2012-04-25', gender:'Female', class:'9',  section:'A', fatherName:'Ganesh Iyer',  fatherAadhar:'2345 6789 0601', motherName:'Kavitha Iyer', motherAadhar:'2345 6789 0602', studentAadhar:'2345 6789 0603', phone:'9876543215', address:'Vijayawada', admissionDate:'2026-06-05' }
     ],
     fees: [
-      { id:'F001', studentId:'101', year:'2026-27', type:'Tuition',   amount:25000, discount:0,    discountReason:'' },
-      { id:'F002', studentId:'102', year:'2026-27', type:'Tuition',   amount:25000, discount:0,    discountReason:'' },
-      { id:'F003', studentId:'103', year:'2026-27', type:'Tuition',   amount:28000, discount:0,    discountReason:'' },
-      { id:'F004', studentId:'104', year:'2026-27', type:'Transport', amount:12000, discount:0,    discountReason:'' },
-      { id:'F005', studentId:'105', year:'2026-27', type:'Tuition',   amount:25000, discount:0,    discountReason:'' },
-      { id:'F006', studentId:'106', year:'2026-27', type:'Tuition',   amount:25000, discount:5000, discountReason:'Merit scholarship' }
+      { id:'F001', studentId:'101', year:'2026-27', type:'Admission Fee',   amount:25000, discount:0,    discountReason:'' },
+      { id:'F002', studentId:'102', year:'2026-27', type:'Admission Fee',   amount:25000, discount:0,    discountReason:'' },
+      { id:'F003', studentId:'103', year:'2026-27', type:'Admission Fee',   amount:28000, discount:0,    discountReason:'' },
+      { id:'F004', studentId:'104', year:'2026-27', type:'School Fee', amount:12000, discount:0,    discountReason:'' },
+      { id:'F005', studentId:'105', year:'2026-27', type:'Admission Fee',   amount:25000, discount:0,    discountReason:'' },
+      { id:'F006', studentId:'106', year:'2026-27', type:'Admission Fee',   amount:25000, discount:5000, discountReason:'Merit scholarship' }
     ],
     payments: [
       { id:'P001', feeId:'F001', studentId:'101', date:'2026-06-15', amount:25000, method:'Cash',          receipt:'R1001' },
@@ -1295,7 +1295,7 @@ function openAnnouncementSendList(ids, message, channel){
 
 function openFeeModal(id, presetStudentId){
   const editing = id ? feeById(id) : null;
-  const presetTypes = ['Tuition','Transport','Hostel','Exam','Previous year outstanding due'];
+  const presetTypes = ['Admission Fee','School Fee','Books Fee','Van Fee','Last Year due'];
   const isCustomType = editing && !presetTypes.includes(editing.type);
   openModal({
     title: editing ? `Edit fee ${editing.id}` : 'Add fee record',
@@ -1316,11 +1316,11 @@ function openFeeModal(id, presetStudentId){
       <div class="field-row">
         <div class="field"><label>Academic year</label><input type="text" id="f_year" value="${esc(editing?editing.year:'2026-27')}"></div>
         <div class="field"><label>Fee type</label><select id="f_type">
-          <option ${editing&&editing.type==='Tuition'?'selected':''}>Tuition</option>
-          <option ${editing&&editing.type==='Transport'?'selected':''}>Transport</option>
-          <option ${editing&&editing.type==='Hostel'?'selected':''}>Hostel</option>
-          <option ${editing&&editing.type==='Exam'?'selected':''}>Exam</option>
-          <option ${editing&&editing.type==='Previous year outstanding due'?'selected':''}>Previous year outstanding due</option>
+          <option ${editing&&editing.type==='Admission Fee'?'selected':''}>Admission Fee</option>
+          <option ${editing&&editing.type==='School Fee'?'selected':''}>School Fee</option>
+          <option ${editing&&editing.type==='Books Fee'?'selected':''}>Books Fee</option>
+          <option ${editing&&editing.type==='Van Fee'?'selected':''}>Van Fee</option>
+          <option ${editing&&editing.type==='Last Year due'?'selected':''}>Last Year due</option>
           <option value="Other" ${isCustomType?'selected':''}>Other</option>
         </select></div>
       </div>
@@ -1541,11 +1541,11 @@ function openPaymentModal(){
       <div class="field-row">
         <div class="field"><label>Fee type</label><select id="p_feeTypeFilter">
           <option value="">All fee types</option>
-          <option>Tuition</option>
-          <option>Transport</option>
-          <option>Hostel</option>
-          <option>Exam</option>
-          <option>Previous year outstanding due</option>
+          <option>Admission Fee</option>
+          <option>School Fee</option>
+          <option>Books Fee</option>
+          <option>Van Fee</option>
+          <option>Last Year due</option>
           <option value="Other">Other</option>
         </select></div>
         <div class="field" id="p_feeTypeOtherWrap" style="display:none;">
@@ -2439,7 +2439,7 @@ function openExpenseModal(){
     body: `
       <div class="field-row">
         <div class="field"><label>Date</label><input type="date" id="e_date" value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="field"><label>Category</label><select id="e_category"><option>Electricity</option><option>Salary</option><option>Stationery</option><option>Maintenance</option><option>Transport</option><option>Other</option></select></div>
+        <div class="field"><label>Category</label><select id="e_category"><option>Electricity</option><option>Salary</option><option>Stationery</option><option>Maintenance</option><option>School Fee</option><option>Other</option></select></div>
       </div>
       <div class="field"><label>Description</label><input type="text" id="e_desc" placeholder="What was this expense for?"></div>
       <div class="field-row">

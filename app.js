@@ -761,7 +761,7 @@ function renderDashboard(){
 
     setContent(`
       <div class="stat-grid">
-        <div class="stat-card"><div class="label">Students enrolled</div><div class="value">${/*DB.students.length*/}</div></div>
+        <div class="stat-card"><div class="label">Students enrolled</div><div class="value">${DB.students.length}</div></div>
         <div class="stat-card accent"><div class="label">Fees billed (2026-27)</div><div class="value">${money(totalBilled)}</div><div class="foot">${money(totalDiscount)} discounted</div></div>
         <div class="stat-card success"><div class="label">Collected</div><div class="value">${money(totalCollected)}</div><div class="foot">${DB.payments.length} payments recorded</div></div>  
         <div class="stat-card danger"><div class="label">Pending balance</div><div class="value">${money(totalPending)}</div><div class="foot">${feeCalcs.filter(x=>x.calc.status!=='Paid').length} fee records outstanding</div></div>
